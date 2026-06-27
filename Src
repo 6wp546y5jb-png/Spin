@@ -9,10 +9,6 @@ local Config = {
     -- Set to math.huge for unlimited spins                  --
     --========================================================--
     MaxSpins = 20,
-    
-    -- Default delays (hidden from UI)
-    LuckyDelay = 0.5,
-    AbilityDelay = 1.5,
 }
 
 -- [[ CORE REQS & SERVICES ]]
@@ -21,6 +17,12 @@ local Player = Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
+
+-- [[ DUPLICATE PROTECTION CHECK ]]
+if CoreGui:FindFirstChild("SpinManagerUI") or Player:WaitForChild("PlayerGui"):FindFirstChild("SpinManagerUI") then
+    warn("[Spin Manager]: Script is already running! Blocked duplicate execution.")
+    return
+end
 
 -- [[ TARGET REMOTE FUNCTION ]]
 local remote = ReplicatedStorage:WaitForChild("Packages")
@@ -32,8 +34,20 @@ local remote = ReplicatedStorage:WaitForChild("Packages")
     :WaitForChild("RF")
     :WaitForChild("RequestRankedReward")
 
--- [[ TRACKERS ]]
+-- [[ TRACKERS & PACING RATES ]]
 local TotalSpinsExecuted = 0
+local WindowSpins = 0
+local WindowResetTime = os.clock() + 5
+
+-- Shared throttling check
+local function checkRateLimit()
+    local currentTime = os.clock()
+    if currentTime >= WindowResetTime then
+        WindowSpins = 0
+        WindowResetTime = currentTime + 5
+    end
+    return WindowSpins < 2
+end
 
 -- [[ GUI CREATION ]]
 local ScreenGui = Instance.new("ScreenGui")
@@ -42,7 +56,7 @@ ScreenGui.ResetOnSpawn = false
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = Player.PlayerGui end
 
--- Main Frame (Resized to look clean without the extra textboxes)
+-- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 350, 220)
@@ -135,12 +149,13 @@ end
 createToggle("LuckyToggle", "Auto Lucky Spins", 100, "AutoLuckySpins")
 createToggle("AbilityToggle", "Auto Ability Spins", 155, "AutoAbilitySpins")
 
--- [[ EXECUTION LOOPS WITH COMBINED SPIN LIMITER ]]
+-- [[ THROTTLED EXECUTION LOOPS ]]
 
 -- Loop 1: Lucky Spins
 task.spawn(function()
     while true do
-        if Config.AutoLuckySpins and TotalSpinsExecuted < Config.MaxSpins then
+        if Config.AutoLuckySpins and TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
+            WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             
@@ -152,14 +167,15 @@ task.spawn(function()
                 warn("Lucky Spin Error: " .. tostring(err))
             end
         end
-        task.wait(Config.LuckyDelay)
+        task.wait(0.25) -- Fast sleep checking interval
     end
 end)
 
 -- Loop 2: Ability Spins
 task.spawn(function()
     while true do
-        if Config.AutoAbilitySpins and TotalSpinsExecuted < Config.MaxSpins then
+        if Config.AutoAbilitySpins and TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
+            WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             
@@ -171,6 +187,6 @@ task.spawn(function()
                 warn("Ability Spin Error: " .. tostring(err))
             end
         end
-        task.wait(Config.AbilityDelay)
+        task.wait(0.25) -- Fast sleep checking interval
     end
 end)
