@@ -1,5 +1,5 @@
 
--- [[ CONFIG ]]
+--- [[ CONFIG ]]
 local Config = {
     AutoLuckySpins = false,
     AutoAbilitySpins = false,
@@ -10,6 +10,12 @@ local Config = {
     -- Set to math.huge for unlimited spins                  --
     --========================================================--
     MaxSpins = 20,
+}
+
+-- [[ KNOWN ASSETS POOL FOR RANDOM GENERATOR ]]
+local RandomAssetPool = {
+    "blackball", "BlackBall", "black_ball", "BLACKBALL", 
+    "lucky_spin", "ability_booster", "1", "4", "super_ball"
 }
 
 -- [[ CORE REQS & SERVICES ]]
@@ -50,6 +56,72 @@ local function checkRateLimit()
     return WindowSpins < 2
 end
 
+-- [[ COMPREHENSIVE SCANNING FORMATTER ]]
+local function getAllFormatStyles(inputStr)
+    local variants = {}
+    local seen = {}
+    
+    local function add(val)
+        if val and val ~= "" and not seen[val] then
+            seen[val] = true
+            table.insert(variants, val)
+        end
+    end
+    
+    -- Clean edge spaces
+    inputStr = inputStr:gsub("^%s*(.-)%s*$", "%1")
+    if tonumber(inputStr) then return {tonumber(inputStr)} end
+
+    -- Extract words regardless of dividers (spaces, underscores, hyphens, camelCase casing)
+    local words = {}
+    -- Split up camelCase/PascalCase words safely
+    local brokenCasing = inputStr:gsub("(%l)(%u)", "%1 %2"):gsub("(%u)(%u%l)", "%1 %2")
+    -- Collect individual word sequences
+    for word in brokenCasing:gsub("[%-_%s]+", " "):gmatch("%S+") do
+        table.insert(words, word)
+    end
+    
+    if #words == 0 then return {inputStr} end
+    
+    -- 1. Raw exact text
+    add(inputStr)
+    
+    -- 2. Lowercase & Uppercase raw
+    add(inputStr:lower())
+    add(inputStr:upper())
+    
+    -- 3. Formatted Styles across word components
+    local lowerWords, upperWords, titleWords = {}, {}, {}
+    for i, w in ipairs(words) do
+        lowerWords[i] = w:lower()
+        upperWords[i] = w:upper()
+        titleWords[i] = w:sub(1,1):upper() .. w:sub(2):lower()
+    end
+    
+    -- Flat Concatenations (e.g., blackball, BlackBall)
+    add(table.concat(lowerWords))
+    add(table.concat(upperWords))
+    add(table.concat(titleWords)) -- PascalCase
+    if #titleWords > 0 then
+        titleWords[1] = titleWords[1]:lower()
+        add(table.concat(titleWords)) -- camelCase
+    end
+    
+    -- Snake Case variants (e.g., black_ball, BLACK_BALL)
+    add(table.concat(lowerWords, "_"))
+    add(table.concat(upperWords, "_"))
+    
+    -- Kebab Case variants (e.g., black-ball, BLACK-BALL)
+    add(table.concat(lowerWords, "-"))
+    add(table.concat(upperWords, "-"))
+    
+    -- Space separated variants (e.g., black ball, Black Ball)
+    add(table.concat(lowerWords, " "))
+    add(table.concat(upperWords, " "))
+    
+    return variants
+end
+
 -- [[ GUI CREATION ]]
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SpinManagerUI"
@@ -57,11 +129,10 @@ ScreenGui.ResetOnSpawn = false
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = Player.PlayerGui end
 
--- Main Frame (Increased height to fit new custom input)
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 350, 280) 
-MainFrame.Position = UDim2.new(0.5, -175, 0.5, -140)
+MainFrame.Size = UDim2.new(0, 350, 360) 
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -180)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -72,7 +143,6 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 12)
 UICorner.Parent = MainFrame
 
--- Title Bar
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 50)
 Title.BackgroundTransparency = 1
@@ -82,7 +152,6 @@ Title.TextSize = 18
 Title.Font = Enum.Font.SourceSansBold
 Title.Parent = MainFrame
 
--- Status / Counter Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -40, 0, 30)
 StatusLabel.Position = UDim2.new(0, 20, 0, 50)
@@ -94,7 +163,6 @@ StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 StatusLabel.Font = Enum.Font.SourceSans
 StatusLabel.Parent = MainFrame
 
--- Helper Function for Creating Toggles
 local function createToggle(name, text, posY, configKey)
     local Container = Instance.new("Frame")
     Container.Size = UDim2.new(1, -40, 0, 45)
@@ -146,93 +214,138 @@ local function createToggle(name, text, posY, configKey)
     end)
 end
 
--- Build Interface Toggles
 createToggle("LuckyToggle", "Auto Lucky Spins", 100, "AutoLuckySpins")
 createToggle("AbilityToggle", "Auto Ability Spins", 155, "AutoAbilitySpins")
 
--- [[ CUSTOM ID REQUESTER ]]
-local CustomContainer = Instance.new("Frame")
-CustomContainer.Size = UDim2.new(1, -40, 0, 45)
-CustomContainer.Position = UDim2.new(0, 20, 0, 210)
-CustomContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-CustomContainer.BorderSizePixel = 0
-CustomContainer.Parent = MainFrame
+-- [[ DEEP SCAN SEARCH CONTAINER ]]
+local SearchContainer = Instance.new("Frame")
+SearchContainer.Size = UDim2.new(1, -40, 0, 45)
+SearchContainer.Position = UDim2.new(0, 20, 0, 210)
+SearchContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+SearchContainer.BorderSizePixel = 0
+SearchContainer.Parent = MainFrame
 
-local CustomCorner = Instance.new("UICorner")
-CustomCorner.CornerRadius = UDim.new(0, 6)
-CustomCorner.Parent = CustomContainer
+local SearchCorner = Instance.new("UICorner")
+SearchCorner.CornerRadius = UDim.new(0, 6)
+SearchCorner.Parent = SearchContainer
 
-local CustomInput = Instance.new("TextBox")
-CustomInput.Size = UDim2.new(0.5, 0, 0, 25)
-CustomInput.Position = UDim2.new(0, 15, 0.5, -12)
-CustomInput.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-CustomInput.Text = ""
-CustomInput.PlaceholderText = "Enter Custom ID..."
-CustomInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-CustomInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
-CustomInput.TextSize = 14
-CustomInput.Font = Enum.Font.SourceSans
-CustomInput.ClearTextOnFocus = false
-CustomInput.Parent = CustomContainer
+local SearchInput = Instance.new("TextBox")
+SearchInput.Size = UDim2.new(0.5, 0, 0, 25)
+SearchInput.Position = UDim2.new(0, 15, 0.5, -12)
+SearchInput.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+SearchInput.Text = ""
+SearchInput.PlaceholderText = "Scan item name/ID..."
+SearchInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+SearchInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
+SearchInput.TextSize = 14
+SearchInput.Font = Enum.Font.SourceSans
+SearchInput.ClearTextOnFocus = false
+SearchInput.Parent = SearchContainer
 
-local InputCorner = Instance.new("UICorner")
-InputCorner.CornerRadius = UDim.new(0, 4)
-InputCorner.Parent = CustomInput
+local SearchInputCorner = Instance.new("UICorner")
+SearchInputCorner.CornerRadius = UDim.new(0, 4)
+SearchInputCorner.Parent = SearchInput
 
-local CustomButton = Instance.new("TextButton")
-CustomButton.Size = UDim2.new(0, 70, 0, 25)
-CustomButton.Position = UDim2.new(1, -85, 0.5, -12)
-CustomButton.BackgroundColor3 = Color3.fromRGB(60, 100, 160)
-CustomButton.Text = "OBTAIN"
-CustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CustomButton.Font = Enum.Font.SourceSansBold
-CustomButton.TextSize = 12
-CustomButton.Parent = CustomContainer
+local SearchButton = Instance.new("TextButton")
+SearchButton.Size = UDim2.new(0, 70, 0, 25)
+SearchButton.Position = UDim2.new(1, -85, 0.5, -12)
+SearchButton.BackgroundColor3 = Color3.fromRGB(60, 100, 160)
+SearchButton.Text = "SCAN ALL"
+SearchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SearchButton.Font = Enum.Font.SourceSansBold
+SearchButton.TextSize = 12
+SearchButton.Parent = SearchContainer
 
-local CButtonCorner = Instance.new("UICorner")
-CButtonCorner.CornerRadius = UDim.new(0, 4)
-CButtonCorner.Parent = CustomButton
+local SearchButtonCorner = Instance.new("UICorner")
+SearchButtonCorner.CornerRadius = UDim.new(0, 4)
+SearchButtonCorner.Parent = SearchButton
 
--- Logic for Custom Single Execution
-CustomButton.MouseButton1Click:Connect(function()
-    local customId = tonumber(CustomInput.Text)
+-- Multi-style Remote Scanning Execution
+SearchButton.MouseButton1Click:Connect(function()
+    local textInput = SearchInput.Text
+    if textInput == "" then return end
     
-    if customId then
+    local scanItems = getAllFormatStyles(textInput)
+    
+    if #scanItems > 0 then
         if TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
             WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             
-            -- Animate Button Press
-            TweenService:Create(CustomButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(40, 70, 110)}):Play()
+            TweenService:Create(SearchButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(40, 70, 110)}):Play()
             task.delay(0.1, function()
-                TweenService:Create(CustomButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 100, 160)}):Play()
+                TweenService:Create(SearchButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 100, 160)}):Play()
             end)
 
             task.spawn(function()
-                local success, err = pcall(function() 
-                    remote:InvokeServer(customId) 
-                end)
-                
-                if not success then
-                    warn("Custom Request Error: " .. tostring(err))
+                -- Sequentially hits the remote using every variation format found
+                for _, formatVariant in ipairs(scanItems) do
+                    local success, err = pcall(function() 
+                        remote:InvokeServer(formatVariant) 
+                    end)
+                    if not success then
+                        warn("Failed dispatch for variant style ["..tostring(formatVariant).."]: " .. tostring(err))
+                    end
                 end
             end)
         else
             warn("Rate limit reached or Max Spins exceeded.")
         end
-    else
-        warn("Please enter a valid number ID.")
-        CustomInput.Text = ""
-        CustomInput.PlaceholderText = "Invalid Number!"
-        task.delay(1.5, function() CustomInput.PlaceholderText = "Enter Custom ID..." end)
     end
 end)
 
+-- [[ RANDOM ASSET GENERATOR UI ]]
+local GeneratorContainer = Instance.new("Frame")
+GeneratorContainer.Size = UDim2.new(1, -40, 0, 45)
+GeneratorContainer.Position = UDim2.new(0, 20, 0, 265)
+GeneratorContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+GeneratorContainer.BorderSizePixel = 0
+GeneratorContainer.Parent = MainFrame
+
+local GenCorner = Instance.new("UICorner")
+GenCorner.CornerRadius = UDim.new(0, 6)
+GenCorner.Parent = GeneratorContainer
+
+local GenLabel = Instance.new("TextLabel")
+GenLabel.Size = UDim2.new(0.5, 0, 1, 0)
+GenLabel.Position = UDim2.new(0, 15, 0, 0)
+GenLabel.BackgroundTransparency = 1
+GenLabel.Text = "Random Asset Utility"
+GenLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
+GenLabel.TextSize = 14
+GenLabel.Font = Enum.Font.SourceSansItalic
+GenLabel.TextXAlignment = Enum.TextXAlignment.Left
+GenLabel.Parent = GeneratorContainer
+
+local GenButton = Instance.new("TextButton")
+GenButton.Size = UDim2.new(0, 85, 0, 25)
+GenButton.Position = UDim2.new(1, -100, 0.5, -12)
+GenButton.BackgroundColor3 = Color3.fromRGB(90, 60, 140)
+GenButton.Text = "GENERATE"
+GenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+GenButton.Font = Enum.Font.SourceSansBold
+GenButton.TextSize = 12
+GenButton.Parent = GeneratorContainer
+
+local GenButtonCorner = Instance.new("UICorner")
+GenButtonCorner.CornerRadius = UDim.new(0, 4)
+GenButtonCorner.Parent = GenButton
+
+GenButton.MouseButton1Click:Connect(function()
+    if #RandomAssetPool > 0 then
+        local randomIndex = math.random(1, #RandomAssetPool)
+        local chosenAsset = RandomAssetPool[randomIndex]
+        SearchInput.Text = tostring(chosenAsset)
+        
+        TweenService:Create(GenButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 40, 100)}):Play()
+        task.delay(0.1, function()
+            TweenService:Create(GenButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(90, 60, 140)}):Play()
+        end)
+    end
+end)
 
 -- [[ THROTTLED EXECUTION LOOPS ]]
-
--- Loop 1: Lucky Spins
 task.spawn(function()
     while true do
         if Config.AutoLuckySpins and TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
@@ -240,19 +353,13 @@ task.spawn(function()
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             
-            local success, err = pcall(function() 
-                remote:InvokeServer(1) 
-            end)
-            
-            if not success then
-                warn("Lucky Spin Error: " .. tostring(err))
-            end
+            local success, err = pcall(function() remote:InvokeServer(1) end)
+            if not success then warn("Lucky Spin Error: " .. tostring(err)) end
         end
         task.wait(0.25)
     end
 end)
 
--- Loop 2: Ability Spins
 task.spawn(function()
     while true do
         if Config.AutoAbilitySpins and TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
@@ -260,13 +367,8 @@ task.spawn(function()
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             
-            local success, err = pcall(function() 
-                remote:InvokeServer(4) 
-            end)
-            
-            if not success then
-                warn("Ability Spin Error: " .. tostring(err))
-            end
+            local success, err = pcall(function() remote:InvokeServer(4) end)
+            if not success then warn("Ability Spin Error: " .. tostring(err)) end
         end
         task.wait(0.25)
     end
