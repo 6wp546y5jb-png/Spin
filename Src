@@ -1,0 +1,46 @@
+-- [[ CORE REQS & SERVICES ]]
+local Player = game:GetService("Players").LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- [[ TARGET REMOTE FUNCTION ]]
+local remote = ReplicatedStorage:WaitForChild("Packages")
+    :WaitForChild("_Index")
+    :WaitForChild("sleitnick_knit@1.7.0")
+    :WaitForChild("knit")
+    :WaitForChild("Services")
+    :WaitForChild("SeasonService")
+    :WaitForChild("RF")
+    :WaitForChild("RequestRankedReward")
+
+-- [[ CONTROL STATES ]]
+-- Set these to 'false' if you want to turn a specific spin off
+local AutoLuckySpins = true
+local AutoAbilitySpins = true
+
+-- [[ LOOP 1: LUCKY SPINS ]]
+task.spawn(function()
+    while AutoLuckySpins do
+        local success, err = pcall(function() 
+            remote:InvokeServer(1) 
+        end)
+        
+        if not success then
+            warn("Lucky Spin Error: " .. tostring(err))
+        end
+        task.wait(0.5) -- Fires every 0.5 seconds
+    end
+end)
+
+-- [[ LOOP 2: ABILITY SPINS ]]
+task.spawn(function()
+    while AutoAbilitySpins do
+        local success, err = pcall(function() 
+            remote:InvokeServer(4) 
+        end)
+        
+        if not success then
+            warn("Ability Spin Error: " .. tostring(err))
+        end
+        task.wait(1.5) -- Fires every 1.5 seconds
+    end
+end)
