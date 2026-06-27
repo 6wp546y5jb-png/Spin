@@ -1,21 +1,13 @@
-
---- [[ CONFIG ]]
+-- [[ CONFIG ]]
 local Config = {
     AutoLuckySpins = false,
     AutoAbilitySpins = false,
-
-    --========================================================--
-    -- EDIT THIS NUMBER TO CHANGE THE MAX TOTAL SPINS ALLOWED --
-    -- Example: 20 = script stops after 20 total spins       --
-    -- Set to math.huge for unlimited spins                  --
-    --========================================================--
     MaxSpins = 20,
 }
 
--- [[ KNOWN ASSETS POOL FOR RANDOM GENERATOR ]]
+-- [[ RANDOM ASSET POOL ]]
 local RandomAssetPool = {
-    "blackball", "BlackBall", "black_ball", "BLACKBALL", 
-    "lucky_spin", "ability_booster", "1", "4", "super_ball"
+    "blackball", "lucky spin", "ability booster", "1", "4"
 }
 
 -- [[ CORE REQS & SERVICES ]]
@@ -27,7 +19,7 @@ local TweenService = game:GetService("TweenService")
 
 -- [[ DUPLICATE PROTECTION CHECK ]]
 if CoreGui:FindFirstChild("SpinManagerUI") or Player:WaitForChild("PlayerGui"):FindFirstChild("SpinManagerUI") then
-    warn("[Spin Manager]: Script is already running! Blocked duplicate execution.")
+    warn("[Spin Manager]: Script is already running!")
     return
 end
 
@@ -45,8 +37,8 @@ local remote = ReplicatedStorage:WaitForChild("Packages")
 local TotalSpinsExecuted = 0
 local WindowSpins = 0
 local WindowResetTime = os.clock() + 5
+local ScannedItemDatabase = {} -- Stores discovered Name -> ID mappings
 
--- Shared throttling check
 local function checkRateLimit()
     local currentTime = os.clock()
     if currentTime >= WindowResetTime then
@@ -56,70 +48,70 @@ local function checkRateLimit()
     return WindowSpins < 2
 end
 
--- [[ COMPREHENSIVE SCANNING FORMATTER ]]
-local function getAllFormatStyles(inputStr)
-    local variants = {}
-    local seen = {}
+-- [[ SOURCE CODE / MODULE SCANNER ENGINE ]]
+local function scanGameSource()
+    local foundCount = 0
+    local checkedModules = 0
+    ScannedItemDatabase = {} -- Reset database
     
-    local function add(val)
-        if val and val ~= "" and not seen[val] then
-            seen[val] = true
-            table.insert(variants, val)
+    print("[Scanner]: Beginning deep scan of game assets and modules...")
+    
+    -- Deep scan strategy 1: Read returned data tables from ModuleScripts
+    for _, module in ipairs(ReplicatedStorage:GetDescendants()) do
+        if module:IsA("ModuleScript") then
+            checkedModules = checkedModules + 1
+            local success, dataTable = pcall(function()
+                return require(module)
+            end)
+            
+            if success and type(dataTable) == "table" then
+                -- Recursive function to parse deeply nested game data tables
+                local function parseTable(t)
+                    for key, val in pairs(t) do
+                        local cleanKey = tostring(key):lower():gsub("[%-_%s]", "")
+                        local cleanVal = tostring(val):lower():gsub("[%-_%s]", "")
+                        
+                        -- Pattern Match A: Key is a string name, Value is a number ID
+                        if type(key) == "string" and type(val) == "number" and val <= 100000 then
+                            if not ScannedItemDatabase[cleanKey] then
+                                ScannedItemDatabase[cleanKey] = val
+                                foundCount = foundCount + 1
+                            end
+                        -- Pattern Match B: Standard dictionary structure {Name = "Blackball", Id = 7}
+                        elseif type(val) == "table" then
+                            local id = val.Id or val.ID or val.id or val.ItemId or val.AssetId
+                            local name = val.Name or val.Name or val.name or val.ItemName
+                            
+                            if tonumber(id) and type(name) == "string" then
+                                local cName = name:lower():gsub("[%-_%s]", "")
+                                if not ScannedItemDatabase[cName] then
+                                    ScannedItemDatabase[cName] = tonumber(id)
+                                    foundCount = foundCount + 1
+                                end
+                            else
+                                parseTable(val) -- Recurse deeper if it's just another folder/table
+                            end
+                        end
+                    end
+                end
+                parseTable(dataTable)
+            end
         end
     end
     
-    -- Clean edge spaces
-    inputStr = inputStr:gsub("^%s*(.-)%s*$", "%1")
-    if tonumber(inputStr) then return {tonumber(inputStr)} end
-
-    -- Extract words regardless of dividers (spaces, underscores, hyphens, camelCase casing)
-    local words = {}
-    -- Split up camelCase/PascalCase words safely
-    local brokenCasing = inputStr:gsub("(%l)(%u)", "%1 %2"):gsub("(%u)(%u%l)", "%1 %2")
-    -- Collect individual word sequences
-    for word in brokenCasing:gsub("[%-_%s]+", " "):gmatch("%S+") do
-        table.insert(words, word)
+    -- Deep scan strategy 2: Scan Instance Objects and Value objects
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("ValueBase") and tonumber(obj.Value) then
+            local cleanName = obj.Name:lower():gsub("[%-_%s]", "")
+            if not ScannedItemDatabase[cleanName] then
+                ScannedItemDatabase[cleanName] = tonumber(obj.Value)
+                foundCount = foundCount + 1
+            end
+        end
     end
     
-    if #words == 0 then return {inputStr} end
-    
-    -- 1. Raw exact text
-    add(inputStr)
-    
-    -- 2. Lowercase & Uppercase raw
-    add(inputStr:lower())
-    add(inputStr:upper())
-    
-    -- 3. Formatted Styles across word components
-    local lowerWords, upperWords, titleWords = {}, {}, {}
-    for i, w in ipairs(words) do
-        lowerWords[i] = w:lower()
-        upperWords[i] = w:upper()
-        titleWords[i] = w:sub(1,1):upper() .. w:sub(2):lower()
-    end
-    
-    -- Flat Concatenations (e.g., blackball, BlackBall)
-    add(table.concat(lowerWords))
-    add(table.concat(upperWords))
-    add(table.concat(titleWords)) -- PascalCase
-    if #titleWords > 0 then
-        titleWords[1] = titleWords[1]:lower()
-        add(table.concat(titleWords)) -- camelCase
-    end
-    
-    -- Snake Case variants (e.g., black_ball, BLACK_BALL)
-    add(table.concat(lowerWords, "_"))
-    add(table.concat(upperWords, "_"))
-    
-    -- Kebab Case variants (e.g., black-ball, BLACK-BALL)
-    add(table.concat(lowerWords, "-"))
-    add(table.concat(upperWords, "-"))
-    
-    -- Space separated variants (e.g., black ball, Black Ball)
-    add(table.concat(lowerWords, " "))
-    add(table.concat(upperWords, " "))
-    
-    return variants
+    print("[Scanner]: Scan complete. Analyzed " .. checkedModules .. " modules. Mapped " .. foundCount .. " unique items to numerical IDs.")
+    return foundCount
 end
 
 -- [[ GUI CREATION ]]
@@ -131,8 +123,8 @@ if not ScreenGui.Parent then ScreenGui.Parent = Player.PlayerGui end
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 350, 360) 
-MainFrame.Position = UDim2.new(0.5, -175, 0.5, -180)
+MainFrame.Size = UDim2.new(0, 350, 415) -- Increased height for the source scanner interface
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -207)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -217,10 +209,58 @@ end
 createToggle("LuckyToggle", "Auto Lucky Spins", 100, "AutoLuckySpins")
 createToggle("AbilityToggle", "Auto Ability Spins", 155, "AutoAbilitySpins")
 
--- [[ DEEP SCAN SEARCH CONTAINER ]]
+-- [[ LIVE SOURCE SCANNER PANEL (NEW UI ELEMENT) ]]
+local ScanPanelContainer = Instance.new("Frame")
+ScanPanelContainer.Size = UDim2.new(1, -40, 0, 45)
+ScanPanelContainer.Position = UDim2.new(0, 20, 0, 210)
+ScanPanelContainer.BackgroundColor3 = Color3.fromRGB(30, 40, 35)
+ScanPanelContainer.BorderSizePixel = 0
+ScanPanelContainer.Parent = MainFrame
+
+local ScanPanelCorner = Instance.new("UICorner")
+ScanPanelCorner.CornerRadius = UDim.new(0, 6)
+ScanPanelCorner.Parent = ScanPanelContainer
+
+local ScanStatusLabel = Instance.new("TextLabel")
+ScanStatusLabel.Size = UDim2.new(0.6, 0, 1, 0)
+ScanStatusLabel.Position = UDim2.new(0, 15, 0, 0)
+ScanStatusLabel.BackgroundTransparency = 1
+ScanStatusLabel.Text = "Source Status: Unscanned"
+ScanStatusLabel.TextColor3 = Color3.fromRGB(140, 170, 150)
+ScanStatusLabel.TextSize = 13
+ScanStatusLabel.Font = Enum.Font.SourceSansItalic
+ScanStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+ScanStatusLabel.Parent = ScanPanelContainer
+
+local MasterScanButton = Instance.new("TextButton")
+MasterScanButton.Size = UDim2.new(0, 85, 0, 25)
+MasterScanButton.Position = UDim2.new(1, -100, 0.5, -12)
+MasterScanButton.BackgroundColor3 = Color3.fromRGB(40, 110, 70)
+MasterScanButton.Text = "SCAN GAME"
+MasterScanButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MasterScanButton.Font = Enum.Font.SourceSansBold
+MasterScanButton.TextSize = 12
+MasterScanButton.Parent = ScanPanelContainer
+
+local MasterScanCorner = Instance.new("UICorner")
+MasterScanCorner.CornerRadius = UDim.new(0, 4)
+MasterScanCorner.Parent = MasterScanButton
+
+MasterScanButton.MouseButton1Click:Connect(function()
+    ScanStatusLabel.Text = "Scanning source..."
+    MasterScanButton.Text = "SCANNING..."
+    task.wait(0.1)
+    
+    local found = scanGameSource()
+    
+    ScanStatusLabel.Text = "Database: " .. found .. " Items"
+    MasterScanButton.Text = "RE-SCAN"
+end)
+
+-- [[ ID LOOKUP INPUT BOX ]]
 local SearchContainer = Instance.new("Frame")
 SearchContainer.Size = UDim2.new(1, -40, 0, 45)
-SearchContainer.Position = UDim2.new(0, 20, 0, 210)
+SearchContainer.Position = UDim2.new(0, 20, 0, 265)
 SearchContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 SearchContainer.BorderSizePixel = 0
 SearchContainer.Parent = MainFrame
@@ -234,7 +274,7 @@ SearchInput.Size = UDim2.new(0.5, 0, 0, 25)
 SearchInput.Position = UDim2.new(0, 15, 0.5, -12)
 SearchInput.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 SearchInput.Text = ""
-SearchInput.PlaceholderText = "Scan item name/ID..."
+SearchInput.PlaceholderText = "Enter item name..."
 SearchInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 SearchInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
 SearchInput.TextSize = 14
@@ -250,7 +290,7 @@ local SearchButton = Instance.new("TextButton")
 SearchButton.Size = UDim2.new(0, 70, 0, 25)
 SearchButton.Position = UDim2.new(1, -85, 0.5, -12)
 SearchButton.BackgroundColor3 = Color3.fromRGB(60, 100, 160)
-SearchButton.Text = "SCAN ALL"
+SearchButton.Text = "RUN ITEM"
 SearchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 SearchButton.Font = Enum.Font.SourceSansBold
 SearchButton.TextSize = 12
@@ -260,14 +300,19 @@ local SearchButtonCorner = Instance.new("UICorner")
 SearchButtonCorner.CornerRadius = UDim.new(0, 4)
 SearchButtonCorner.Parent = SearchButton
 
--- Multi-style Remote Scanning Execution
 SearchButton.MouseButton1Click:Connect(function()
     local textInput = SearchInput.Text
     if textInput == "" then return end
     
-    local scanItems = getAllFormatStyles(textInput)
+    local targetedId = tonumber(textInput)
     
-    if #scanItems > 0 then
+    -- If it isn't an explicit integer, look it up inside our newly scanned database
+    if not targetedId then
+        local normalizedSearch = textInput:lower():gsub("[%-_%s]", "")
+        targetedId = ScannedItemDatabase[normalizedSearch]
+    end
+    
+    if targetedId then
         if TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
             WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
@@ -279,26 +324,28 @@ SearchButton.MouseButton1Click:Connect(function()
             end)
 
             task.spawn(function()
-                -- Sequentially hits the remote using every variation format found
-                for _, formatVariant in ipairs(scanItems) do
-                    local success, err = pcall(function() 
-                        remote:InvokeServer(formatVariant) 
-                    end)
-                    if not success then
-                        warn("Failed dispatch for variant style ["..tostring(formatVariant).."]: " .. tostring(err))
-                    end
+                local success, err = pcall(function() 
+                    remote:InvokeServer(targetedId) 
+                end)
+                if not success then
+                    warn("Server rejected looked-up ID ("..tostring(targetedId).."): " .. tostring(err))
                 end
             end)
         else
-            warn("Rate limit reached or Max Spins exceeded.")
+            warn("Rate limit or Max Spins reached.")
         end
+    else
+        warn("Item name not found in current database. Click 'SCAN GAME' first!")
+        SearchInput.Text = ""
+        SearchInput.PlaceholderText = "Run Scan First!"
+        task.delay(1.5, function() SearchInput.PlaceholderText = "Enter item name..." end)
     end
 end)
 
 -- [[ RANDOM ASSET GENERATOR UI ]]
 local GeneratorContainer = Instance.new("Frame")
 GeneratorContainer.Size = UDim2.new(1, -40, 0, 45)
-GeneratorContainer.Position = UDim2.new(0, 20, 0, 265)
+GeneratorContainer.Position = UDim2.new(0, 20, 0, 320)
 GeneratorContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 GeneratorContainer.BorderSizePixel = 0
 GeneratorContainer.Parent = MainFrame
@@ -352,9 +399,7 @@ task.spawn(function()
             WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
-            
-            local success, err = pcall(function() remote:InvokeServer(1) end)
-            if not success then warn("Lucky Spin Error: " .. tostring(err)) end
+            pcall(function() remote:InvokeServer(1) end)
         end
         task.wait(0.25)
     end
@@ -366,9 +411,7 @@ task.spawn(function()
             WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
-            
-            local success, err = pcall(function() remote:InvokeServer(4) end)
-            if not success then warn("Ability Spin Error: " .. tostring(err)) end
+            pcall(function() remote:InvokeServer(4) end)
         end
         task.wait(0.25)
     end
