@@ -1,6 +1,9 @@
 -- [[ CORE REQS & SERVICES ]]
-local Player = game:GetService("Players").LocalPlayer
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
 
 -- [[ TARGET REMOTE FUNCTION ]]
 local remote = ReplicatedStorage:WaitForChild("Packages")
@@ -12,35 +15,213 @@ local remote = ReplicatedStorage:WaitForChild("Packages")
     :WaitForChild("RF")
     :WaitForChild("RequestRankedReward")
 
--- [[ CONTROL STATES ]]
--- Set these to 'false' if you want to turn a specific spin off
-local AutoLuckySpins = true
-local AutoAbilitySpins = true
+-- [[ CONFIGURABLE STATES ]]
+local Config = {
+    AutoLuckySpins = false,
+    AutoAbilitySpins = false,
+    LuckyDelay = 0.5,
+    AbilityDelay = 1.5,
+    MaxSpins = 20, -- Strict limit for total combined spin invocations
+}
 
--- [[ LOOP 1: LUCKY SPINS ]]
-task.spawn(function()
-    while AutoLuckySpins do
-        local success, err = pcall(function() 
-            remote:InvokeServer(1) 
-        end)
-        
-        if not success then
-            warn("Lucky Spin Error: " .. tostring(err))
+-- [[ TRACKERS ]]
+local TotalSpinsExecuted = 0
+
+-- [[ GUI CREATION ]]
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SpinManagerUI"
+ScreenGui.ResetOnSpawn = false
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then ScreenGui.Parent = Player.PlayerGui end
+
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 350, 400)
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
+
+-- Title Bar
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 50)
+Title.BackgroundTransparency = 1
+Title.Text = "Spin Manager Dashboard"
+Title.TextColor3 = Color3.fromRGB(240, 240, 245)
+Title.TextSize = 18
+Title.Font = Enum.Font.SourceSansBold
+Title.Parent = MainFrame
+
+-- Status / Counter Label
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -40, 0, 30)
+StatusLabel.Position = UDim2.new(0, 20, 0, 50)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Total Spins: 0 / " .. Config.MaxSpins
+StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
+StatusLabel.TextSize = 14
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Font = Enum.Font.SourceSans
+StatusLabel.Parent = MainFrame
+
+-- Helper Function for Creating Toggles
+local function createToggle(name, text, posY, configKey)
+    local Container = Instance.new("Frame")
+    Container.Size = UDim2.new(1, -40, 0, 45)
+    Container.Position = UDim2.new(0, 20, 0, posY)
+    Container.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    Container.BorderSizePixel = 0
+    Container.Parent = MainFrame
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = Container
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.6, 0, 1, 0)
+    Label.Position = UDim2.new(0, 15, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(220, 220, 225)
+    Label.TextSize = 15
+    Label.Font = Enum.Font.SourceSansSemibold
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Container
+
+    local Button = Instance.new("TextButton")
+    Button.Size = UDim2.new(0, 60, 0, 25)
+    Button.Position = UDim2.new(1, -75, 0.5, -12)
+    Button.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    Button.Text = "OFF"
+    Button.TextColor3 = Color3.fromRGB(200, 70, 70)
+    Button.Font = Enum.Font.SourceSansBold
+    Button.TextSize = 12
+    Button.Parent = Container
+    
+    local BCorner = Instance.new("UICorner")
+    BCorner.CornerRadius = UDim.new(0, 4)
+    BCorner.Parent = Button
+
+    Button.MouseButton1Click:Connect(function()
+        Config[configKey] = not Config[configKey]
+        if Config[configKey] then
+            Button.Text = "ON"
+            Button.TextColor3 = Color3.fromRGB(70, 200, 70)
+            TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(45, 65, 45)}):Play()
+        else
+            Button.Text = "OFF"
+            Button.TextColor3 = Color3.fromRGB(200, 70, 70)
+            TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 55)}):Play()
         end
-        task.wait(0.5) -- Fires every 0.5 seconds
+    end)
+end
+
+-- Helper Function for Creating Input Boxes
+local function createTextBox(text, posY, placeholder, callback)
+    local Container = Instance.new("Frame")
+    Container.Size = UDim2.new(1, -40, 0, 45)
+    Container.Position = UDim2.new(0, 20, 0, posY)
+    Container.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    Container.BorderSizePixel = 0
+    Container.Parent = MainFrame
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = Container
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.6, 0, 1, 0)
+    Label.Position = UDim2.new(0, 15, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(220, 220, 225)
+    Label.TextSize = 14
+    Label.Font = Enum.Font.SourceSans
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Container
+
+    local Box = Instance.new("TextBox")
+    Box.Size = UDim2.new(0, 80, 0, 25)
+    Box.Position = UDim2.new(1, -95, 0.5, -12)
+    Box.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    Box.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Box.Text = placeholder
+    Box.Font = Enum.Font.SourceSans
+    Box.TextSize = 14
+    Box.Parent = Container
+    
+    local BCorner = Instance.new("UICorner")
+    BCorner.CornerRadius = UDim.new(0, 4)
+    BCorner.Parent = Box
+
+    Box.FocusLost:Connect(function(enterPressed)
+        local val = tonumber(Box.Text)
+        if val then
+            callback(val)
+        else
+            Box.Text = placeholder
+        end
+    end)
+end
+
+-- Build Interface Rows
+createToggle("LuckyToggle", "Auto Lucky Spins", 100, "AutoLuckySpins")
+createTextBox("Lucky Delay (s):", 155, tostring(Config.LuckyDelay), function(val) Config.LuckyDelay = val end)
+
+createToggle("AbilityToggle", "Auto Ability Spins", 215, "AutoAbilitySpins")
+createTextBox("Ability Delay (s):", 270, tostring(Config.AbilityDelay), function(val) Config.AbilityDelay = val end)
+
+createTextBox("Max Total Spins:", 330, tostring(Config.MaxSpins), function(val) 
+    Config.MaxSpins = val 
+    StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. Config.MaxSpins
+end)
+
+
+-- [[ EXECUTION LOOPS WITH COMBINED SPIN LIMITER ]]
+
+-- Loop 1: Lucky Spins
+task.spawn(function()
+    while true do
+        if Config.AutoLuckySpins and TotalSpinsExecuted < Config.MaxSpins then
+            -- Increment BEFORE invocation to avoid race conditions between fast loops
+            TotalSpinsExecuted = TotalSpinsExecuted + 1
+            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. Config.MaxSpins
+            
+            local success, err = pcall(function() 
+                remote:InvokeServer(1) 
+            end)
+            
+            if not success then
+                warn("Lucky Spin Error: " .. tostring(err))
+            end
+        end
+        task.wait(Config.LuckyDelay)
     end
 end)
 
--- [[ LOOP 2: ABILITY SPINS ]]
+-- Loop 2: Ability Spins
 task.spawn(function()
-    while AutoAbilitySpins do
-        local success, err = pcall(function() 
-            remote:InvokeServer(4) 
-        end)
-        
-        if not success then
-            warn("Ability Spin Error: " .. tostring(err))
+    while true do
+        if Config.AutoAbilitySpins and TotalSpinsExecuted < Config.MaxSpins then
+            -- Increment BEFORE invocation to avoid race conditions between fast loops
+            TotalSpinsExecuted = TotalSpinsExecuted + 1
+            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. Config.MaxSpins
+            
+            local success, err = pcall(function() 
+                remote:InvokeServer(4) 
+            end)
+            
+            if not success then
+                warn("Ability Spin Error: " .. tostring(err))
+            end
         end
-        task.wait(1.5) -- Fires every 1.5 seconds
+        task.wait(Config.AbilityDelay)
     end
 end)
