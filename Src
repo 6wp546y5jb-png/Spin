@@ -172,6 +172,9 @@ TyperBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 TyperBox.TextSize = 14
 TyperBox.Font = Enum.Font.SourceSansCode
 TyperBox.ClipsDescendants = true
+TyperBox.ClearTextOnFocus = true
+TyperBox.TextEditable = true
+TyperBox.Active = true  -- Forces ui layered inputs to target this text box frame
 TyperBox.Parent = GeneratorContainer
 
 local BoxCorner = Instance.new("UICorner")
@@ -205,7 +208,6 @@ GenStatus.Parent = GeneratorContainer
 
 -- [[ HELPER: CASING PERMUTATION GENERATOR ]]
 local function getCasingPermutations(input)
-    -- Clean whitespaces and symbols, isolate structural words
     local words = {}
     for word in string.gmatch(input, "[%w]+") do
         table.insert(words, word)
@@ -213,29 +215,22 @@ local function getCasingPermutations(input)
     
     if #words == 0 then return {input} end
 
-    -- Reconstruct into different string formats
     local rawLower = string.lower(input)
     local rawUpper = string.upper(input)
-    
-    -- Snake Case (neon_ball)
     local snakeCase = string.lower(table.concat(words, "_"))
     
-    -- Camel Case (neonBall)
     local camelCase = string.lower(words[1])
     for i = 2, #words do
         camelCase = camelCase .. string.upper(string.sub(words[i], 1, 1)) .. string.lower(string.sub(words[i], 2))
     end
     
-    -- Pascal Case (NeonBall)
     local pascalCase = ""
     for i = 1, #words do
         pascalCase = pascalCase .. string.upper(string.sub(words[i], 1, 1)) .. string.lower(string.sub(words[i], 2))
     end
     
-    -- Space separated cleanly
     local normalSpaced = table.concat(words, " ")
 
-    -- Remove duplicates dynamically
     local unique = {}
     local results = {}
     for _, str in ipairs({input, rawLower, rawUpper, snakeCase, camelCase, pascalCase, normalSpaced}) do
@@ -250,7 +245,7 @@ end
 -- [[ PROCESS GENERATION VIA FORMAT MATRICES ]]
 GenButton.MouseButton1Click:Connect(function()
     local rawInput = TyperBox.Text
-    if rawInput == "" then
+    if rawInput == "" or rawInput == TyperBox.PlaceholderText then
         GenStatus.Text = "Status: Input field empty."
         GenStatus.TextColor3 = Color3.fromRGB(220, 80, 80)
         return
@@ -259,62 +254,57 @@ GenButton.MouseButton1Click:Connect(function()
     GenStatus.Text = "Status: Formulating permutation arrays..."
     GenStatus.TextColor3 = Color3.fromRGB(200, 200, 100)
 
-    -- Collect every casing alternative
     local baseStrings = getCasingPermutations(rawInput)
     local finalPayloads = {}
 
-    -- Handle number-specific padding if input happens to be a standalone number
     local num = tonumber(rawInput)
     if num then
         table.insert(finalPayloads, num)
         table.insert(finalPayloads, string.format("%03d", num))
     end
 
-    -- Wrap casing types inside multiple structural developer dictionary keys
     for _, str in ipairs(baseStrings) do
-        table.insert(finalPayloads, str)                     -- Direct String literal
-        table.insert(finalPayloads, {ID = str})               -- Standard Hash ID object
-        table.insert(finalPayloads, {Item = str})             -- Standard Name Object
-        table.insert(finalPayloads, {Name = str})             -- Direct item reference
-        table.insert(finalPayloads, {AssetID = str})          -- Asset Tag key
-        table.insert(finalPayloads, {str})                    -- Linear Array formatting
+        table.insert(finalPayloads, str)                     
+        table.insert(finalPayloads, {ID = str})               
+        table.insert(finalPayloads, {Item = str})             
+        table.insert(finalPayloads, {Name = str})             
+        table.insert(finalPayloads, {AssetID = str})          
+        table.insert(finalPayloads, {str})                    
     end
 
-    -- Run structural firing down pipelines
     task.spawn(function()
         for _, payload in ipairs(finalPayloads) do
             pcall(function()
                 remote:InvokeServer(payload)
                 remote:InvokeServer("ItemRequest", payload)
-                remote:InvokeServer(1, payload) -- Double verification argument pattern
+                remote:InvokeServer(1, payload) 
             end)
-            task.wait(0.04) -- Pacing to handle the array density safely
+            task.wait(0.04)
         end
         GenStatus.Text = "Status: Finished scanning variant branches."
         GenStatus.TextColor3 = Color3.fromRGB(80, 220, 80)
     end)
 end)
 
--- [[ THROTTLED LOOP EXECUTION ]]
+-- [[ COMBINED LOOP EXECUTION ]]
 task.spawn(function()
     while true do
+        local fired = false
         if Config.AutoLuckySpins and TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
             WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
-            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             pcall(function() remote:InvokeServer(1) end)
+            fired = true
         end
-        task.wait(0.25)
-    end
-end)
-
-task.spawn(function()
-    while true do
         if Config.AutoAbilitySpins and TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
             WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
-            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             pcall(function() remote:InvokeServer(4) end)
+            fired = true
+        end
+        
+        if fired then
+            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
         end
         task.wait(0.25)
     end
