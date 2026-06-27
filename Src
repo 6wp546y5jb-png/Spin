@@ -1,3 +1,20 @@
+-- [[ CONFIG ]]
+local Config = {
+    AutoLuckySpins = false,
+    AutoAbilitySpins = false,
+
+    --========================================================--
+    -- EDIT THIS NUMBER TO CHANGE THE MAX TOTAL SPINS ALLOWED --
+    -- Example: 20 = script stops after 20 total spins       --
+    -- Set to math.huge for unlimited spins                  --
+    --========================================================--
+    MaxSpins = 20,
+    
+    -- Default delays (hidden from UI)
+    LuckyDelay = 0.5,
+    AbilityDelay = 1.5,
+}
+
 -- [[ CORE REQS & SERVICES ]]
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
@@ -15,15 +32,6 @@ local remote = ReplicatedStorage:WaitForChild("Packages")
     :WaitForChild("RF")
     :WaitForChild("RequestRankedReward")
 
--- [[ CONFIGURABLE STATES ]]
-local Config = {
-    AutoLuckySpins = false,
-    AutoAbilitySpins = false,
-    LuckyDelay = 0.5,
-    AbilityDelay = 1.5,
-    MaxSpins = 20, -- Strict limit for total combined spin invocations
-}
-
 -- [[ TRACKERS ]]
 local TotalSpinsExecuted = 0
 
@@ -34,11 +42,11 @@ ScreenGui.ResetOnSpawn = false
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = Player.PlayerGui end
 
--- Main Frame
+-- Main Frame (Resized to look clean without the extra textboxes)
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 350, 400)
-MainFrame.Position = UDim2.new(0.5, -175, 0.5, -200)
+MainFrame.Size = UDim2.new(0, 350, 220)
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -110)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -64,7 +72,7 @@ local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -40, 0, 30)
 StatusLabel.Position = UDim2.new(0, 20, 0, 50)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Total Spins: 0 / " .. Config.MaxSpins
+StatusLabel.Text = "Total Spins: 0 / " .. tostring(Config.MaxSpins)
 StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
 StatusLabel.TextSize = 14
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -123,66 +131,9 @@ local function createToggle(name, text, posY, configKey)
     end)
 end
 
--- Helper Function for Creating Input Boxes
-local function createTextBox(text, posY, placeholder, callback)
-    local Container = Instance.new("Frame")
-    Container.Size = UDim2.new(1, -40, 0, 45)
-    Container.Position = UDim2.new(0, 20, 0, posY)
-    Container.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-    Container.BorderSizePixel = 0
-    Container.Parent = MainFrame
-    
-    local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(0, 6)
-    Corner.Parent = Container
-
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.6, 0, 1, 0)
-    Label.Position = UDim2.new(0, 15, 0, 0)
-    Label.BackgroundTransparency = 1
-    Label.Text = text
-    Label.TextColor3 = Color3.fromRGB(220, 220, 225)
-    Label.TextSize = 14
-    Label.Font = Enum.Font.SourceSans
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Container
-
-    local Box = Instance.new("TextBox")
-    Box.Size = UDim2.new(0, 80, 0, 25)
-    Box.Position = UDim2.new(1, -95, 0.5, -12)
-    Box.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    Box.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Box.Text = placeholder
-    Box.Font = Enum.Font.SourceSans
-    Box.TextSize = 14
-    Box.Parent = Container
-    
-    local BCorner = Instance.new("UICorner")
-    BCorner.CornerRadius = UDim.new(0, 4)
-    BCorner.Parent = Box
-
-    Box.FocusLost:Connect(function(enterPressed)
-        local val = tonumber(Box.Text)
-        if val then
-            callback(val)
-        else
-            Box.Text = placeholder
-        end
-    end)
-end
-
--- Build Interface Rows
+-- Build Interface Toggles Only
 createToggle("LuckyToggle", "Auto Lucky Spins", 100, "AutoLuckySpins")
-createTextBox("Lucky Delay (s):", 155, tostring(Config.LuckyDelay), function(val) Config.LuckyDelay = val end)
-
-createToggle("AbilityToggle", "Auto Ability Spins", 215, "AutoAbilitySpins")
-createTextBox("Ability Delay (s):", 270, tostring(Config.AbilityDelay), function(val) Config.AbilityDelay = val end)
-
-createTextBox("Max Total Spins:", 330, tostring(Config.MaxSpins), function(val) 
-    Config.MaxSpins = val 
-    StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. Config.MaxSpins
-end)
-
+createToggle("AbilityToggle", "Auto Ability Spins", 155, "AutoAbilitySpins")
 
 -- [[ EXECUTION LOOPS WITH COMBINED SPIN LIMITER ]]
 
@@ -190,9 +141,8 @@ end)
 task.spawn(function()
     while true do
         if Config.AutoLuckySpins and TotalSpinsExecuted < Config.MaxSpins then
-            -- Increment BEFORE invocation to avoid race conditions between fast loops
             TotalSpinsExecuted = TotalSpinsExecuted + 1
-            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. Config.MaxSpins
+            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             
             local success, err = pcall(function() 
                 remote:InvokeServer(1) 
@@ -210,9 +160,8 @@ end)
 task.spawn(function()
     while true do
         if Config.AutoAbilitySpins and TotalSpinsExecuted < Config.MaxSpins then
-            -- Increment BEFORE invocation to avoid race conditions between fast loops
             TotalSpinsExecuted = TotalSpinsExecuted + 1
-            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. Config.MaxSpins
+            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
             
             local success, err = pcall(function() 
                 remote:InvokeServer(4) 
