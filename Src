@@ -57,11 +57,11 @@ ScreenGui.ResetOnSpawn = false
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = Player.PlayerGui end
 
--- Main Frame
+-- Main Frame (Increased height to fit new custom input)
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 350, 220)
-MainFrame.Position = UDim2.new(0.5, -175, 0.5, -110)
+MainFrame.Size = UDim2.new(0, 350, 280) 
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -140)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -146,9 +146,89 @@ local function createToggle(name, text, posY, configKey)
     end)
 end
 
--- Build Interface Toggles Only
+-- Build Interface Toggles
 createToggle("LuckyToggle", "Auto Lucky Spins", 100, "AutoLuckySpins")
 createToggle("AbilityToggle", "Auto Ability Spins", 155, "AutoAbilitySpins")
+
+-- [[ CUSTOM ID REQUESTER ]]
+local CustomContainer = Instance.new("Frame")
+CustomContainer.Size = UDim2.new(1, -40, 0, 45)
+CustomContainer.Position = UDim2.new(0, 20, 0, 210)
+CustomContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+CustomContainer.BorderSizePixel = 0
+CustomContainer.Parent = MainFrame
+
+local CustomCorner = Instance.new("UICorner")
+CustomCorner.CornerRadius = UDim.new(0, 6)
+CustomCorner.Parent = CustomContainer
+
+local CustomInput = Instance.new("TextBox")
+CustomInput.Size = UDim2.new(0.5, 0, 0, 25)
+CustomInput.Position = UDim2.new(0, 15, 0.5, -12)
+CustomInput.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+CustomInput.Text = ""
+CustomInput.PlaceholderText = "Enter Custom ID..."
+CustomInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+CustomInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
+CustomInput.TextSize = 14
+CustomInput.Font = Enum.Font.SourceSans
+CustomInput.ClearTextOnFocus = false
+CustomInput.Parent = CustomContainer
+
+local InputCorner = Instance.new("UICorner")
+InputCorner.CornerRadius = UDim.new(0, 4)
+InputCorner.Parent = CustomInput
+
+local CustomButton = Instance.new("TextButton")
+CustomButton.Size = UDim2.new(0, 70, 0, 25)
+CustomButton.Position = UDim2.new(1, -85, 0.5, -12)
+CustomButton.BackgroundColor3 = Color3.fromRGB(60, 100, 160)
+CustomButton.Text = "OBTAIN"
+CustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CustomButton.Font = Enum.Font.SourceSansBold
+CustomButton.TextSize = 12
+CustomButton.Parent = CustomContainer
+
+local CButtonCorner = Instance.new("UICorner")
+CButtonCorner.CornerRadius = UDim.new(0, 4)
+CButtonCorner.Parent = CustomButton
+
+-- Logic for Custom Single Execution
+CustomButton.MouseButton1Click:Connect(function()
+    local customId = tonumber(CustomInput.Text)
+    
+    if customId then
+        if TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
+            WindowSpins = WindowSpins + 1
+            TotalSpinsExecuted = TotalSpinsExecuted + 1
+            StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
+            
+            -- Animate Button Press
+            TweenService:Create(CustomButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(40, 70, 110)}):Play()
+            task.delay(0.1, function()
+                TweenService:Create(CustomButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 100, 160)}):Play()
+            end)
+
+            task.spawn(function()
+                local success, err = pcall(function() 
+                    remote:InvokeServer(customId) 
+                end)
+                
+                if not success then
+                    warn("Custom Request Error: " .. tostring(err))
+                end
+            end)
+        else
+            warn("Rate limit reached or Max Spins exceeded.")
+        end
+    else
+        warn("Please enter a valid number ID.")
+        CustomInput.Text = ""
+        CustomInput.PlaceholderText = "Invalid Number!"
+        task.delay(1.5, function() CustomInput.PlaceholderText = "Enter Custom ID..." end)
+    end
+end)
+
 
 -- [[ THROTTLED EXECUTION LOOPS ]]
 
@@ -168,7 +248,7 @@ task.spawn(function()
                 warn("Lucky Spin Error: " .. tostring(err))
             end
         end
-        task.wait(0.25) -- Fast sleep checking interval
+        task.wait(0.25)
     end
 end)
 
@@ -188,6 +268,6 @@ task.spawn(function()
                 warn("Ability Spin Error: " .. tostring(err))
             end
         end
-        task.wait(0.25) -- Fast sleep checking interval
+        task.wait(0.25)
     end
 end)
