@@ -3,13 +3,7 @@
 local Config = {
     AutoLuckySpins = false,
     AutoAbilitySpins = false,
-
-    --========================================================--
-    -- EDIT THIS NUMBER TO CHANGE THE MAX TOTAL SPINS ALLOWED --
-    -- Example: 20 = script stops after 20 total spins       --
-    -- Set to math.huge for unlimited spins                  --
-    --========================================================--
-    MaxSpins = 20,
+    MaxSpins = math.huge,
 }
 
 -- [[ CORE REQS & SERVICES ]]
@@ -40,7 +34,6 @@ local TotalSpinsExecuted = 0
 local WindowSpins = 0
 local WindowResetTime = os.clock() + 5
 
--- Shared throttling check
 local function checkRateLimit()
     local currentTime = os.clock()
     if currentTime >= WindowResetTime then
@@ -57,11 +50,10 @@ ScreenGui.ResetOnSpawn = false
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = Player.PlayerGui end
 
--- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 350, 220)
-MainFrame.Position = UDim2.new(0.5, -175, 0.5, -110)
+MainFrame.Size = UDim2.new(0, 350, 340)
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -170)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -72,20 +64,18 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 12)
 UICorner.Parent = MainFrame
 
--- Title Bar
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 50)
 Title.BackgroundTransparency = 1
-Title.Text = "Spin Manager Dashboard"
+Title.Text = "Universal Asset Dashboard"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.TextSize = 18
 Title.Font = Enum.Font.SourceSansBold
 Title.Parent = MainFrame
 
--- Status / Counter Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -40, 0, 30)
-StatusLabel.Position = UDim2.new(0, 20, 0, 50)
+StatusLabel.Position = UDim2.new(0, 20, 0, 45)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "Total Spins: 0 / " .. tostring(Config.MaxSpins)
 StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
@@ -94,7 +84,6 @@ StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 StatusLabel.Font = Enum.Font.SourceSans
 StatusLabel.Parent = MainFrame
 
--- Helper Function for Creating Toggles
 local function createToggle(name, text, posY, configKey)
     local Container = Instance.new("Frame")
     Container.Size = UDim2.new(1, -40, 0, 45)
@@ -146,48 +135,187 @@ local function createToggle(name, text, posY, configKey)
     end)
 end
 
--- Build Interface Toggles Only
-createToggle("LuckyToggle", "Auto Lucky Spins", 100, "AutoLuckySpins")
-createToggle("AbilityToggle", "Auto Ability Spins", 155, "AutoAbilitySpins")
+createToggle("LuckyToggle", "Auto Lucky Spins", 85, "AutoLuckySpins")
+createToggle("AbilityToggle", "Auto Ability Spins", 140, "AutoAbilitySpins")
 
--- [[ THROTTLED EXECUTION LOOPS ]]
+-- [[ ITEM TEXT SCANNER UI SECTION ]]
+local GeneratorContainer = Instance.new("Frame")
+GeneratorContainer.Size = UDim2.new(1, -40, 0, 110)
+GeneratorContainer.Position = UDim2.new(0, 20, 0, 205)
+GeneratorContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+GeneratorContainer.BorderSizePixel = 0
+GeneratorContainer.Parent = MainFrame
 
--- Loop 1: Lucky Spins
+local GenCorner = Instance.new("UICorner")
+GenCorner.CornerRadius = UDim.new(0, 8)
+GenCorner.Parent = GeneratorContainer
+
+local GenTitle = Instance.new("TextLabel")
+GenTitle.Size = UDim2.new(1, 0, 0, 25)
+GenTitle.Position = UDim2.new(0, 12, 0, 5)
+GenTitle.BackgroundTransparency = 1
+GenTitle.Text = "Universal Asset / Name Scanner"
+GenTitle.TextColor3 = Color3.fromRGB(180, 180, 190)
+GenTitle.TextSize = 13
+GenTitle.Font = Enum.Font.SourceSansBold
+GenTitle.TextXAlignment = Enum.TextXAlignment.Left
+GenTitle.Parent = GeneratorContainer
+
+local TyperBox = Instance.new("TextBox")
+TyperBox.Size = UDim2.new(0.5, -15, 0, 40)
+TyperBox.Position = UDim2.new(0, 12, 0, 40)
+TyperBox.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+TyperBox.BorderSizePixel = 0
+TyperBox.Text = ""
+TyperBox.PlaceholderText = "Type ID or Name..."
+TyperBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+TyperBox.TextSize = 14
+TyperBox.Font = Enum.Font.SourceSansCode
+TyperBox.ClipsDescendants = true
+TyperBox.Parent = GeneratorContainer
+
+local BoxCorner = Instance.new("UICorner")
+BoxCorner.CornerRadius = UDim.new(0, 6)
+BoxCorner.Parent = TyperBox
+
+local GenButton = Instance.new("TextButton")
+GenButton.Size = UDim2.new(0.5, -15, 0, 40)
+GenButton.Position = UDim2.new(0.5, 3, 0, 40)
+GenButton.BackgroundColor3 = Color3.fromRGB(60, 80, 200)
+GenButton.Text = "SCAN & FIRE"
+GenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+GenButton.Font = Enum.Font.SourceSansBold
+GenButton.TextSize = 14
+GenButton.Parent = GeneratorContainer
+
+local GenBtnCorner = Instance.new("UICorner")
+GenBtnCorner.CornerRadius = UDim.new(0, 6)
+GenBtnCorner.Parent = GenButton
+
+local GenStatus = Instance.new("TextLabel")
+GenStatus.Size = UDim2.new(1, -24, 0, 20)
+GenStatus.Position = UDim2.new(0, 12, 0, 85)
+GenStatus.BackgroundTransparency = 1
+GenStatus.Text = "Status: Idle"
+GenStatus.TextColor3 = Color3.fromRGB(120, 120, 130)
+GenStatus.TextSize = 12
+GenStatus.Font = Enum.Font.SourceSansItalic
+GenStatus.TextXAlignment = Enum.TextXAlignment.Left
+GenStatus.Parent = GeneratorContainer
+
+-- [[ HELPER: CASING PERMUTATION GENERATOR ]]
+local function getCasingPermutations(input)
+    -- Clean whitespaces and symbols, isolate structural words
+    local words = {}
+    for word in string.gmatch(input, "[%w]+") do
+        table.insert(words, word)
+    end
+    
+    if #words == 0 then return {input} end
+
+    -- Reconstruct into different string formats
+    local rawLower = string.lower(input)
+    local rawUpper = string.upper(input)
+    
+    -- Snake Case (neon_ball)
+    local snakeCase = string.lower(table.concat(words, "_"))
+    
+    -- Camel Case (neonBall)
+    local camelCase = string.lower(words[1])
+    for i = 2, #words do
+        camelCase = camelCase .. string.upper(string.sub(words[i], 1, 1)) .. string.lower(string.sub(words[i], 2))
+    end
+    
+    -- Pascal Case (NeonBall)
+    local pascalCase = ""
+    for i = 1, #words do
+        pascalCase = pascalCase .. string.upper(string.sub(words[i], 1, 1)) .. string.lower(string.sub(words[i], 2))
+    end
+    
+    -- Space separated cleanly
+    local normalSpaced = table.concat(words, " ")
+
+    -- Remove duplicates dynamically
+    local unique = {}
+    local results = {}
+    for _, str in ipairs({input, rawLower, rawUpper, snakeCase, camelCase, pascalCase, normalSpaced}) do
+        if not unique[str] then
+            unique[str] = true
+            table.insert(results, str)
+        end
+    end
+    return results
+end
+
+-- [[ PROCESS GENERATION VIA FORMAT MATRICES ]]
+GenButton.MouseButton1Click:Connect(function()
+    local rawInput = TyperBox.Text
+    if rawInput == "" then
+        GenStatus.Text = "Status: Input field empty."
+        GenStatus.TextColor3 = Color3.fromRGB(220, 80, 80)
+        return
+    end
+
+    GenStatus.Text = "Status: Formulating permutation arrays..."
+    GenStatus.TextColor3 = Color3.fromRGB(200, 200, 100)
+
+    -- Collect every casing alternative
+    local baseStrings = getCasingPermutations(rawInput)
+    local finalPayloads = {}
+
+    -- Handle number-specific padding if input happens to be a standalone number
+    local num = tonumber(rawInput)
+    if num then
+        table.insert(finalPayloads, num)
+        table.insert(finalPayloads, string.format("%03d", num))
+    end
+
+    -- Wrap casing types inside multiple structural developer dictionary keys
+    for _, str in ipairs(baseStrings) do
+        table.insert(finalPayloads, str)                     -- Direct String literal
+        table.insert(finalPayloads, {ID = str})               -- Standard Hash ID object
+        table.insert(finalPayloads, {Item = str})             -- Standard Name Object
+        table.insert(finalPayloads, {Name = str})             -- Direct item reference
+        table.insert(finalPayloads, {AssetID = str})          -- Asset Tag key
+        table.insert(finalPayloads, {str})                    -- Linear Array formatting
+    end
+
+    -- Run structural firing down pipelines
+    task.spawn(function()
+        for _, payload in ipairs(finalPayloads) do
+            pcall(function()
+                remote:InvokeServer(payload)
+                remote:InvokeServer("ItemRequest", payload)
+                remote:InvokeServer(1, payload) -- Double verification argument pattern
+            end)
+            task.wait(0.04) -- Pacing to handle the array density safely
+        end
+        GenStatus.Text = "Status: Finished scanning variant branches."
+        GenStatus.TextColor3 = Color3.fromRGB(80, 220, 80)
+    end)
+end)
+
+-- [[ THROTTLED LOOP EXECUTION ]]
 task.spawn(function()
     while true do
         if Config.AutoLuckySpins and TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
             WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
-            
-            local success, err = pcall(function() 
-                remote:InvokeServer(1) 
-            end)
-            
-            if not success then
-                warn("Lucky Spin Error: " .. tostring(err))
-            end
+            pcall(function() remote:InvokeServer(1) end)
         end
-        task.wait(0.25) -- Fast sleep checking interval
+        task.wait(0.25)
     end
 end)
 
--- Loop 2: Ability Spins
 task.spawn(function()
     while true do
         if Config.AutoAbilitySpins and TotalSpinsExecuted < Config.MaxSpins and checkRateLimit() then
             WindowSpins = WindowSpins + 1
             TotalSpinsExecuted = TotalSpinsExecuted + 1
             StatusLabel.Text = "Total Spins: " .. TotalSpinsExecuted .. " / " .. tostring(Config.MaxSpins)
-            
-            local success, err = pcall(function() 
-                remote:InvokeServer(4) 
-            end)
-            
-            if not success then
-                warn("Ability Spin Error: " .. tostring(err))
-            end
+            pcall(function() remote:InvokeServer(4) end)
         end
-        task.wait(0.25) -- Fast sleep checking interval
+        task.wait(0.25)
     end
 end)
